@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}New Order{% endblock %}
+{% block content %}
+<div class="card" style="max-width:700px;margin:0 auto;">
+  <div class="card-header"><h2>📋 Place New Order</h2></div>
+  <div class="card-body">
+    <form method="POST">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Customer</label>
+          <select class="form-control" name="customer_id" required>
+            <option value="">-- Select Customer --</option>
+            {% for c in customers %}
+            <option value="{{ c.customer_id }}">{{ c.name }} ({{ c.membership }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Order Type</label>
+          <select class="form-control" name="order_type">
+            <option>Dine-In</option>
+            <option>Takeaway</option>
+            <option>Delivery</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Order Items</label>
+        <div id="items-container">
+          <div class="item-row flex gap-2" style="margin-bottom:10px;">
+            <select class="form-control" name="item_id[]" style="flex:2;" required>
+              <option value="">-- Select Item --</option>
+              {% for m in menu_items %}
+              <option value="{{ m.item_id }}">{{ m.item_name }} — Rs.{{ "%.0f"|format(m.price) }} ({{ m.category }})</option>
+              {% endfor %}
+            </select>
+            <input class="form-control" name="quantity[]" type="number" min="1" value="1" style="flex:0 0 80px;" required/>
+            <button type="button" class="btn btn-sm btn-danger" onclick="removeRow(this)">✕</button>
+          </div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline mt-2" onclick="addRow()">+ Add Another Item</button>
+      </div>
+
+      <div class="flex gap-2 mt-3">
+        <button type="submit" class="btn btn-primary">Place Order</button>
+        <a href="/orders" class="btn btn-outline">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+const menuItems = {{ menu_items | tojson }};
+function addRow() {
+  const c = document.getElementById('items-container');
+  const first = c.querySelector('.item-row');
+  const clone = first.cloneNode(true);
+  clone.querySelector('select').selectedIndex = 0;
+  clone.querySelector('input').value = 1;
+  c.appendChild(clone);
+}
+function removeRow(btn) {
+  const rows = document.querySelectorAll('.item-row');
+  if (rows.length > 1) btn.closest('.item-row').remove();
+}
+</script>
+{% endblock %}

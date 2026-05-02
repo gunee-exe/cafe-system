@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block title %}Customers{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2>👤 Customers</h2>
+    <a href="/customers/add" class="btn btn-primary btn-sm">+ Add Customer</a>
+  </div>
+  <div class="card-body" style="padding:0;">
+    {% if customers %}
+    <table>
+      <thead>
+        <tr><th>#</th><th>Name</th><th>Contact</th><th>Membership</th><th>Loyalty Pts</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+      {% for c in customers %}
+        <tr>
+          <td>{{ c.customer_id }}</td>
+          <td><strong>{{ c.name }}</strong></td>
+          <td>{{ c.contact }}</td>
+          <td>
+            {% if c.membership == 'VIP' %}<span class="badge badge-warning">VIP</span>
+            {% elif c.membership == 'Member' %}<span class="badge badge-info">Member</span>
+            {% else %}<span class="badge badge-secondary">Regular</span>{% endif %}
+          </td>
+          <td>{{ c.loyalty_pts }} pts</td>
+          <td class="flex gap-2">
+            <a href="/customers/edit/{{ c.customer_id }}" class="btn btn-sm btn-outline">Edit</a>
+            <a href="/customers/delete/{{ c.customer_id }}" class="btn btn-sm btn-danger"
+               onclick="return confirm('Delete this customer?')">Delete</a>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state"><div class="icon">👤</div><p>No customers yet.</p></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

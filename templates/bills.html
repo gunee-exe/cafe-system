@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Bills{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-header"><h2>🧾 Bills</h2></div>
+  <div class="card-body" style="padding:0;">
+    {% if bills %}
+    <table>
+      <thead><tr><th>#</th><th>Customer</th><th>Order</th><th>Total</th><th>Discount</th><th>Final</th><th>Mode</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for b in bills %}
+      <tr>
+        <td>{{ b.bill_id }}</td>
+        <td>{{ b.customer_name }}</td>
+        <td>#{{ b.order_id }}</td>
+        <td>Rs. {{ "%.0f"|format(b.total_amount) }}</td>
+        <td>{% if b.discount_applied > 0 %}<span style="color:var(--success)">-Rs. {{ "%.0f"|format(b.discount_applied) }}</span>{% else %}—{% endif %}</td>
+        <td><strong>Rs. {{ "%.0f"|format(b.final_amount) }}</strong></td>
+        <td>{{ b.payment_mode }}</td>
+        <td>{% if b.payment_status=='Paid' %}<span class="badge badge-success">Paid</span>{% else %}<span class="badge badge-danger">Unpaid</span>{% endif %}</td>
+        <td><a href="/bills/{{ b.bill_id }}" class="btn btn-sm btn-outline">View</a></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state"><div class="icon">🧾</div><p>No bills yet.</p></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

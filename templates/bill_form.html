@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block title %}Generate Bill{% endblock %}
+{% block content %}
+<div class="card" style="max-width:600px;margin:0 auto;">
+  <div class="card-header"><h2>🧾 Generate Bill — Order #{{ oid }}</h2></div>
+  <div class="card-body">
+    <table style="margin-bottom:20px;">
+      <thead><tr><th>Item</th><th>Price</th><th>Qty</th><th>Subtotal</th></tr></thead>
+      <tbody>
+      {% for i in items %}
+      <tr>
+        <td>{{ i.item_name }}</td>
+        <td>Rs. {{ "%.0f"|format(i.price) }}</td>
+        <td>{{ i.quantity }}</td>
+        <td>Rs. {{ "%.0f"|format(i.subtotal) }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr><td colspan="3" class="text-right"><strong>Order Total</strong></td>
+            <td><strong>Rs. {{ "%.0f"|format(total) }}</strong></td></tr>
+      </tfoot>
+    </table>
+
+    <form method="POST">
+      <div class="form-group">
+        <label>Payment Mode</label>
+        <select class="form-control" name="payment_mode">
+          <option>Cash</option><option>Card</option>
+          <option>JazzCash</option><option>EasyPaisa</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Promo Code (optional)</label>
+        <input class="form-control" name="promo_code" placeholder="Enter promo code if any"/>
+        {% if promos %}
+        <p style="font-size:12px;color:var(--text-muted);margin-top:6px;">
+          Active codes: {% for p in promos %}<strong>{{ p.code }}</strong> ({{ p.discount_type }}: {{ p.discount_amount }}, min Rs.{{ "%.0f"|format(p.min_order_val) }}){% if not loop.last %}, {% endif %}{% endfor %}
+        </p>
+        {% endif %}
+      </div>
+      <div class="flex gap-2 mt-3">
+        <button type="submit" class="btn btn-success">Generate Bill</button>
+        <a href="/orders/{{ oid }}" class="btn btn-outline">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

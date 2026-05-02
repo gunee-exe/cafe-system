@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}{{ action }} Customer{% endblock %}
+{% block content %}
+<div class="card" style="max-width:500px;margin:0 auto;">
+  <div class="card-header"><h2>{{ action }} Customer</h2></div>
+  <div class="card-body">
+    <form method="POST">
+      <div class="form-group">
+        <label>Full Name</label>
+        <input class="form-control" name="name" required
+               value="{{ customer.name if customer else '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Contact Number</label>
+        <input class="form-control" name="contact" required
+               value="{{ customer.contact if customer else '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Membership</label>
+        <select class="form-control" name="membership">
+          {% for m in ['Regular','Member','VIP'] %}
+          <option value="{{ m }}" {{ 'selected' if customer and customer.membership==m else '' }}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="flex gap-2 mt-3">
+        <button type="submit" class="btn btn-primary">{{ action }} Customer</button>
+        <a href="/customers" class="btn btn-outline">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

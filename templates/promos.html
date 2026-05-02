@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Promo Codes{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2>🏷️ Valid Promo Codes</h2>
+    <a href="/promos/add" class="btn btn-primary btn-sm">+ Add Promo</a>
+  </div>
+  <div class="card-body" style="padding:0;">
+    {% if promos %}
+    <table>
+      <thead><tr><th>Code</th><th>Type</th><th>Discount</th><th>Min Order</th><th>Expiry</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for p in promos %}
+      <tr>
+        <td><strong>{{ p.code }}</strong></td>
+        <td><span class="badge badge-info">{{ p.discount_type }}</span></td>
+        <td>{% if p.discount_type=='percent' %}{{ "%.0f"|format(p.discount_amount) }}%{% else %}Rs. {{ "%.0f"|format(p.discount_amount) }}{% endif %}</td>
+        <td>Rs. {{ "%.0f"|format(p.min_order_val) }}</td>
+        <td>{{ p.expiry_date }}</td>
+        <td><a href="/promos/delete/{{ p.code }}" class="btn btn-sm btn-danger" onclick="return confirm('Delete this promo code?')">Delete</a></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state"><div class="icon">🏷️</div><p>No promo codes active.</p></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

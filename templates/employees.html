@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Employees{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2>👥 Employees</h2>
+    <a href="/employees/add" class="btn btn-primary btn-sm">+ Add Employee</a>
+  </div>
+  <div class="card-body" style="padding:0;">
+    {% if employees %}
+    <table>
+      <thead><tr><th>#</th><th>Name</th><th>Role</th><th>Date of Birth</th><th>Salary (Rs.)</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for e in employees %}
+      <tr>
+        <td>{{ e.employee_id }}</td>
+        <td><strong>{{ e.emp_name }}</strong></td>
+        <td>
+          {% if e.role=='Manager' %}<span class="badge badge-warning">Manager</span>
+          {% elif e.role=='Barista' %}<span class="badge badge-success">Barista</span>
+          {% else %}<span class="badge badge-info">Cashier</span>{% endif %}
+        </td>
+        <td>{{ e.dob }}</td>
+        <td>Rs. {{ "{:,}".format(e.salary|int) }}</td>
+        <td class="flex gap-2">
+          <a href="/employees/edit/{{ e.employee_id }}" class="btn btn-sm btn-outline">Edit</a>
+          <a href="/employees/delete/{{ e.employee_id }}" class="btn btn-sm btn-danger" onclick="return confirm('Delete this employee?')">Delete</a>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state"><div class="icon">👥</div><p>No employees yet.</p></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

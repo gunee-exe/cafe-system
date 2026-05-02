@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}Orders{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2>📋 Orders</h2>
+    <a href="/orders/new" class="btn btn-primary btn-sm">+ New Order</a>
+  </div>
+  <div class="card-body" style="padding:0;">
+    {% if orders %}
+    <table>
+      <thead><tr><th>#</th><th>Customer</th><th>Type</th><th>Status</th><th>Date & Time</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for o in orders %}
+      <tr>
+        <td>{{ o.order_id }}</td>
+        <td><strong>{{ o.customer_name }}</strong></td>
+        <td>{{ o.order_type }}</td>
+        <td>
+          {% if o.order_status == 'Completed' %}<span class="badge badge-success">Completed</span>
+          {% elif o.order_status == 'Pending' %}<span class="badge badge-warning">Pending</span>
+          {% elif o.order_status == 'Preparing' %}<span class="badge badge-info">Preparing</span>
+          {% elif o.order_status == 'Ready' %}<span class="badge badge-success">Ready</span>
+          {% else %}<span class="badge badge-danger">{{ o.order_status }}</span>{% endif %}
+        </td>
+        <td>{{ o.order_datetime.strftime('%d %b %Y, %I:%M %p') }}</td>
+        <td><a href="/orders/{{ o.order_id }}" class="btn btn-sm btn-outline">View</a></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state"><div class="icon">📋</div><p>No orders yet.</p></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

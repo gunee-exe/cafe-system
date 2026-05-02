@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard — Cafe Manager{% endblock %}
+{% block content %}
+<p class="page-title">☕ Dashboard</p>
+<div class="stats">
+  <div class="stat">
+    <div class="num">{{ customers }}</div>
+    <div class="lbl">Customers</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ orders }}</div>
+    <div class="lbl">Total Orders</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ menu }}</div>
+    <div class="lbl">Menu Items Available</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ employees }}</div>
+    <div class="lbl">Employees</div>
+  </div>
+  <div class="stat">
+    <div class="num" style="color:var(--danger)">{{ unpaid }}</div>
+    <div class="lbl">Unpaid Bills</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+  <div class="card">
+    <div class="card-header"><h2>Quick Actions</h2></div>
+    <div class="card-body" style="display:flex;flex-direction:column;gap:10px;">
+      <a href="/orders/new" class="btn btn-primary">+ New Order</a>
+      <a href="/customers/add" class="btn btn-outline">+ Add Customer</a>
+      <a href="/menu/add" class="btn btn-outline">+ Add Menu Item</a>
+      <a href="/promos/add" class="btn btn-outline">+ Add Promo Code</a>
+      <a href="/employees/add" class="btn btn-outline">+ Add Employee</a>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h2>About This System</h2></div>
+    <div class="card-body" style="font-size:14px;color:var(--text-muted);line-height:1.7;">
+      <p>Full-featured cafe database management system built for the DBMS semester project.</p>
+      <ul style="margin-top:12px;padding-left:18px;">
+        <li>PostgreSQL backend with PL/pgSQL triggers</li>
+        <li>Audit logging on all key tables</li>
+        <li>Auto loyalty points & membership upgrades</li>
+        <li>Promo code validation & deletion on use</li>
+        <li>Full CRUD for all entities</li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

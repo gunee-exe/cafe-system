@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}Bill #{{ bill.bill_id }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:550px;margin:0 auto;">
+  <div class="card-header">
+    <h2>🧾 Bill #{{ bill.bill_id }}</h2>
+    {% if bill.payment_status=='Paid' %}<span class="badge badge-success">Paid</span>
+    {% else %}<span class="badge badge-danger">Unpaid</span>{% endif %}
+  </div>
+  <div class="card-body">
+    <div style="text-align:center;margin-bottom:20px;border-bottom:1px dashed var(--border);padding-bottom:16px;">
+      <div style="font-size:22px;font-weight:700;color:var(--primary);">☕ CafeManager</div>
+      <div style="font-size:12px;color:var(--text-muted);">{{ bill.order_datetime.strftime('%d %b %Y, %I:%M %p') }}</div>
+    </div>
+    <div style="margin-bottom:14px;font-size:14px;">
+      <div><strong>Customer:</strong> {{ bill.customer_name }}</div>
+      <div><strong>Order Type:</strong> {{ bill.order_type }}</div>
+      <div><strong>Payment Mode:</strong> {{ bill.payment_mode }}</div>
+      {% if bill.promo_code_used %}<div><strong>Promo Used:</strong> {{ bill.promo_code_used }}</div>{% endif %}
+    </div>
+
+    <table style="margin-bottom:16px;">
+      <thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Subtotal</th></tr></thead>
+      <tbody>
+      {% for i in items %}
+      <tr>
+        <td>{{ i.item_name }}</td><td>{{ i.quantity }}</td>
+        <td>Rs. {{ "%.0f"|format(i.price) }}</td>
+        <td>Rs. {{ "%.0f"|format(i.subtotal) }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    <div style="border-top:1px dashed var(--border);padding-top:14px;font-size:14px;">
+      <div class="flex" style="justify-content:space-between;"><span>Subtotal</span><span>Rs. {{ "%.0f"|format(bill.total_amount) }}</span></div>
+      {% if bill.discount_applied > 0 %}
+      <div class="flex" style="justify-content:space-between;color:var(--success);"><span>Discount</span><span>- Rs. {{ "%.0f"|format(bill.discount_applied) }}</span></div>
+      {% endif %}
+      <div class="flex" style="justify-content:space-between;font-size:18px;font-weight:700;margin-top:10px;color:var(--primary-dark);">
+        <span>Total Due</span><span>Rs. {{ "%.0f"|format(bill.final_amount) }}</span>
+      </div>
+    </div>
+
+    <div class="flex gap-2 mt-4">
+      {% if bill.payment_status == 'Unpaid' %}
+      <a href="/bills/pay/{{ bill.bill_id }}" class="btn btn-success">Mark as Paid</a>
+      {% endif %}
+      <a href="/bills" class="btn btn-outline">← Bills</a>
+      <a href="/orders" class="btn btn-outline">← Orders</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
