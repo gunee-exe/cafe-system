@@ -2,66 +2,146 @@
 {% block title %}New Order{% endblock %}
 {% block content %}
 <div class="card" style="max-width:700px;margin:0 auto;">
-  <div class="card-header"><h2>📋 Place New Order</h2></div>
+  <div class="card-header">
+    <h2>📋 Place New Order</h2>
+  </div>
   <div class="card-body">
-    <form method="POST">
-      <div class="form-row">
-        <div class="form-group">
-          <label>Customer</label>
-          <select class="form-control" name="customer_id" required>
-            <option value="">-- Select Customer --</option>
-            {% for c in customers %}
-            <option value="{{ c.customer_id }}">{{ c.name }} ({{ c.membership }})</option>
-            {% endfor %}
-          </select>
+    <form method="POST" id="order-form">
+
+      <!-- ── STEP 1: Mobile number lookup ── -->
+      <div class="form-group">
+        <label><strong>Customer Mobile Number</strong></label>
+        <div class="flex gap-2" style="align-items:center;">
+          <input type="text" id="contact-input" name="contact" class="form-control" placeholder="e.g. 03001234567"
+            maxlength="20" required autocomplete="off" style="flex:1;" />
+          <button type="button" class="btn btn-outline" onclick="lookupMobile()">🔍 Check</button>
         </div>
-        <div class="form-group">
-          <label>Order Type</label>
-          <select class="form-control" name="order_type">
-            <option>Dine-In</option>
-            <option>Takeaway</option>
-            <option>Delivery</option>
-          </select>
-        </div>
+        <small id="contact-hint" style="color:#888;">Enter the mobile number and click Check.</small>
       </div>
 
-      <div class="form-group">
+      <!-- ── Found: show customer info ── -->
+      <div id="customer-found-box"
+        style="display:none;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:12px 16px;margin-bottom:12px;">
+        <strong>✅ Customer Found</strong><br />
+        <span id="found-name"></span> &nbsp;|&nbsp;
+        <span id="found-membership"></span> &nbsp;|&nbsp;
+        Loyalty Pts: <span id="found-pts"></span>
+      </div>
+
+      <!-- ── Not found: ask for name ── -->
+      <div id="new-customer-box"
+        style="display:none;background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:12px 16px;margin-bottom:12px;">
+        <strong>🆕 New Customer</strong> — No account found for this number.<br />
+        <label style="margin-top:8px;display:block;">Customer Name</label>
+        <input type="text" name="new_customer_name" id="new-customer-name" class="form-control"
+          placeholder="Enter customer name" style="margin-top:4px;" />
+        <small style="color:#888;">A new Regular account will be created automatically.</small>
+      </div>
+
+      <!-- ── STEP 2: Order type ── -->
+      <div class="form-group" id="order-details" style="display:none;">
+        <label>Order Type</label>
+        <select class="form-control" name="order_type">
+          <option>Dine-In</option>
+          <option>Takeaway</option>
+          <option>Delivery</option>
+        </select>
+      </div>
+
+      <!-- ── STEP 3: Items ── -->
+      <div class="form-group" id="items-section" style="display:none;">
         <label>Order Items</label>
         <div id="items-container">
           <div class="item-row flex gap-2" style="margin-bottom:10px;">
             <select class="form-control" name="item_id[]" style="flex:2;" required>
               <option value="">-- Select Item --</option>
               {% for m in menu_items %}
-              <option value="{{ m.item_id }}">{{ m.item_name }} — Rs.{{ "%.0f"|format(m.price) }} ({{ m.category }})</option>
+              <option value="{{ m.item_id }}">{{ m.item_name }} — Rs.{{ "%.0f"|format(m.price) }} ({{ m.category }})
+              </option>
               {% endfor %}
             </select>
-            <input class="form-control" name="quantity[]" type="number" min="1" value="1" style="flex:0 0 80px;" required/>
+            <input class="form-control" name="quantity[]" type="number" min="1" value="1" style="flex:0 0 80px;"
+              required />
             <button type="button" class="btn btn-sm btn-danger" onclick="removeRow(this)">✕</button>
           </div>
         </div>
         <button type="button" class="btn btn-sm btn-outline mt-2" onclick="addRow()">+ Add Another Item</button>
       </div>
 
-      <div class="flex gap-2 mt-3">
+      <!-- ── Submit ── -->
+      <div class="flex gap-2 mt-3" id="submit-section" style="display:none;">
         <button type="submit" class="btn btn-primary">Place Order</button>
         <a href="/orders" class="btn btn-outline">Cancel</a>
       </div>
+
     </form>
   </div>
 </div>
+
 <script>
-const menuItems = {{ menu_items | tojson }};
-function addRow() {
-  const c = document.getElementById('items-container');
-  const first = c.querySelector('.item-row');
-  const clone = first.cloneNode(true);
-  clone.querySelector('select').selectedIndex = 0;
-  clone.querySelector('input').value = 1;
-  c.appendChild(clone);
-}
-function removeRow(btn) {
-  const rows = document.querySelectorAll('.item-row');
-  if (rows.length > 1) btn.closest('.item-row').remove();
-}
+  function lookupMobile() {
+    var contact = document.getElementById('contact-input').value.trim();
+    if (!contact) { alert('Please enter a mobile number first.'); return; }
+
+    var hint = document.getElementById('contact-hint');
+    hint.textContent = 'Checking...';
+    hint.style.color = '#888';
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/api/customer-by-mobile?contact=' + encodeURIComponent(contact), true);
+    xhr.onload = function () {
+      if (xhr.status === 200) {
+        var data = JSON.parse(xhr.responseText);
+        var foundBox = document.getElementById('customer-found-box');
+        var newBox = document.getElementById('new-customer-box');
+        var nameInput = document.getElementById('new-customer-name');
+
+        if (data.found) {
+          document.getElementById('found-name').textContent = data.name;
+          document.getElementById('found-membership').textContent = data.membership;
+          document.getElementById('found-pts').textContent = data.loyalty_pts;
+          foundBox.style.display = 'block';
+          newBox.style.display = 'none';
+          nameInput.required = false;
+          nameInput.value = '';
+          hint.textContent = '✔ Existing customer selected.';
+          hint.style.color = 'green';
+        } else {
+          foundBox.style.display = 'none';
+          newBox.style.display = 'block';
+          nameInput.required = true;
+          hint.textContent = '⚠ No customer found. Enter name below to register.';
+          hint.style.color = '#e65100';
+        }
+        document.getElementById('order-details').style.display = 'block';
+        document.getElementById('items-section').style.display = 'block';
+        document.getElementById('submit-section').style.display = 'flex';
+      } else {
+        hint.textContent = 'Server error. Please try again.';
+        hint.style.color = 'red';
+      }
+    };
+    xhr.onerror = function () {
+      hint.textContent = 'Connection error. Is the server running?';
+      hint.style.color = 'red';
+    };
+    xhr.send();
+  }
+
+  document.getElementById('contact-input').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); lookupMobile(); }
+  });
+
+  function addRow() {
+    var c = document.getElementById('items-container');
+    var clone = c.querySelector('.item-row').cloneNode(true);
+    clone.querySelector('select').selectedIndex = 0;
+    clone.querySelector('input').value = 1;
+    c.appendChild(clone);
+  }
+  function removeRow(btn) {
+    if (document.querySelectorAll('.item-row').length > 1)
+      btn.closest('.item-row').remove();
+  }
 </script>
 {% endblock %}

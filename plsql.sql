@@ -92,8 +92,12 @@ DECLARE
     v_customer_id  INT;
     v_points_earned INT;
 BEGIN
-    -- Only award on Paid bills
-    IF NEW.payment_status = 'Paid' THEN
+    -- Award points only when payment_status transitions to 'Paid'
+    -- On INSERT: only if inserted as Paid
+    -- On UPDATE: only if it changed from Unpaid -> Paid (prevents double-award)
+    IF NEW.payment_status = 'Paid' AND
+       (TG_OP = 'INSERT' OR (TG_OP = 'UPDATE' AND OLD.payment_status <> 'Paid')) THEN
+
         SELECT o.customer_id INTO v_customer_id
         FROM orders o WHERE o.order_id = NEW.order_id;
 

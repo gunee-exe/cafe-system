@@ -174,22 +174,61 @@ def orders():
     cur.close(); conn.close()
     return render_template('orders.html', orders=rows)
 
+@app.route('/api/customer-by-mobile')
+def customer_by_mobile():
+    """AJAX endpoint: looks up a customer by mobile number."""
+    contact = request.args.get('contact', '').strip()
+    if not contact:
+        return jsonify({'found': False})
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT customer_id, name, membership, loyalty_pts FROM customer WHERE contact=%s", (contact,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    if row:
+        return jsonify({'found': True, 'customer_id': row['customer_id'],
+                        'name': row['name'], 'membership': row['membership'],
+                        'loyalty_pts': row['loyalty_pts']})
+    return jsonify({'found': False})
+
 @app.route('/orders/new', methods=['GET','POST'])
 def new_order():
     conn = get_db()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     if request.method == 'POST':
-        customer_id  = request.form['customer_id']
-        order_type   = request.form['order_type']
-        item_ids     = request.form.getlist('item_id[]')
-        quantities   = request.form.getlist('quantity[]')
-        # insert order
-        cur.execute("""
-            INSERT INTO orders (customer_id, order_status, order_datetime, order_type)
-            VALUES (%s, 'Pending', NOW(), %s) RETURNING order_id
-        """, (customer_id, order_type))
-        order_id = cur.fetchone()['order_id']
-        # insert order items
+        contact    = request.form.get('contact', '').strip()
+        new_name   = request.form.get('new_customer_name', '').strip()
+        order_type = request.form['order_type']
+        item_ids   = request.form.getlist('item_id[]')
+        quantities = request.form.getlist('quantity[]')
+
+        # Resolve customer: existing or auto-create new
+        cur.execute("SELECT customer_id FROM customer WHERE contact=%s", (contact,))
+        existing = cur.fetchone()
+        if existing:
+            customer_id = existing['customer_id']
+        else:
+            # Auto-create new customer with the provided name
+            cur.execute("""
+                INSERT INTO customer (name, contact, membership, loyalty_pts)
+                VALUES (%s, %s, 'Regular', 0) RETURNING customer_id
+            """, (new_name or 'Guest', contact))
+            customer_id = cur.fetchone()['customer_id']
+            flash(f'New customer "{new_name or "Guest"}" registered automatically!', 'info')
+
+        # Insert order
+        try:
+            cur.execute("""
+                INSERT INTO orders (customer_id, order_status, order_datetime, order_type)
+                VALUES (%s, 'Pending', NOW(), %s) RETURNING order_id
+            """, (customer_id, order_type))
+            order_id = cur.fetchone()['order_id']
+        except Exception as e:
+            conn.rollback(); cur.close(); conn.close()
+            flash(str(e).split('\n')[0], 'danger')
+            return redirect(url_for('new_order'))
+
+        # Insert order items
         for iid, qty in zip(item_ids, quantities):
             if iid and qty:
                 cur.execute("""
@@ -199,12 +238,11 @@ def new_order():
         conn.commit(); cur.close(); conn.close()
         flash(f'Order #{order_id} placed!', 'success')
         return redirect(url_for('orders'))
-    cur.execute("SELECT * FROM customer ORDER BY name")
-    customers = cur.fetchall()
+
     cur.execute("SELECT * FROM menu_item WHERE is_available=TRUE ORDER BY category, item_name")
     menu_items = cur.fetchall()
     cur.close(); conn.close()
-    return render_template('order_form.html', customers=customers, menu_items=menu_items)
+    return render_template('order_form.html', menu_items=menu_items)
 
 @app.route('/orders/<int:oid>')
 def view_order(oid):
