@@ -2,30 +2,32 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from functools import wraps
 import psycopg2
 import psycopg2.extras
- 
+
 app = Flask(__name__)
 app.secret_key = 'cafe_secret_key_2024'
- 
+
 # ─── Master config (superuser — login check ONLY) ────────────────
 MASTER_CONFIG = {
     'host':     'localhost',
     'database': 'cafe_db',
     'user':     'postgres',
-    'password': 'mianusman1',
+    'password': 'mianusman1',   # your postgres password
     'port':     '5432'
 }
- 
+
 # ─── Role → Real PostgreSQL login user ───────────────────────────
+# Flask connects AS this user for every DB operation after login.
+# GRANT/REVOKE in pgAdmin takes effect immediately — no code change needed.
 ROLE_DB_CONFIG = {
     'Barista': {'host':'localhost','database':'cafe_db','user':'cafe_barista','password':'barista123','port':'5432'},
     'Cashier': {'host':'localhost','database':'cafe_db','user':'cafe_cashier','password':'cashier123','port':'5432'},
     'Manager': {'host':'localhost','database':'cafe_db','user':'cafe_manager','password':'manager123','port':'5432'},
 }
- 
+
 def get_master_db():
     """Superuser — only for login check."""
     return psycopg2.connect(**MASTER_CONFIG)
- 
+
 def get_db():
     """
     Returns connection using the logged-in employee's PostgreSQL role.
@@ -33,89 +35,24 @@ def get_db():
     """
     if 'employee_id' not in session:
         raise Exception("Not logged in")
- 
+
+    # Always re-fetch from DB, never trust session['role'] alone
     conn = psycopg2.connect(**MASTER_CONFIG)
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT role FROM employee WHERE employee_id=%s", (session['employee_id'],))
     row = cur.fetchone()
     cur.close(); conn.close()
- 
+
     if not row:
         raise Exception("Employee not found")
- 
+
     role = row['role']
-    session['role'] = role
- 
+    session['role'] = role  # keep display in sync only
+
     return psycopg2.connect(**ROLE_DB_CONFIG[role])
- 
- 
-# ════════════════════════════════════════
-#  PRIVILEGE ENGINE  (the core new piece)
-# ════════════════════════════════════════
- 
-def get_privileges():
-    """
-    Connect as the current DB role and query information_schema.role_table_grants.
-    Returns a dict: { 'table_name': {'SELECT', 'INSERT', ...}, ... }
-    Called once at login and on every request via before_request.
-    """
-    if 'employee_id' not in session:
-        return {}
- 
-    # re-fetch role from DB (never trust session alone)
-    conn_master = psycopg2.connect(**MASTER_CONFIG)
-    cur = conn_master.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT role FROM employee WHERE employee_id=%s", (session['employee_id'],))
-    row = cur.fetchone()
-    cur.close(); conn_master.close()
- 
-    if not row:
-        return {}
- 
-    role = row['role']
-    cfg  = ROLE_DB_CONFIG.get(role)
-    if not cfg:
-        return {}
- 
-    try:
-        conn = psycopg2.connect(**cfg)
-        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("""
-            SELECT table_name, privilege_type
-            FROM   information_schema.role_table_grants
-            WHERE  grantee = current_user
-        """)
-        rows = cur.fetchall()
-        cur.close(); conn.close()
-    except Exception:
-        return {}
- 
-    privs = {}
-    for r in rows:
-        tbl = r['table_name']
-        priv = r['privilege_type']
-        privs.setdefault(tbl, set()).add(priv)
- 
-    return privs
- 
- 
-@app.before_request
-def refresh_privs():
-    """Re-fetch grants from DB on every request so revocations take effect instantly."""
-    if 'employee_id' in session:
-        session['privs'] = {k: list(v) for k, v in get_privileges().items()}
- 
- 
-@app.context_processor
-def inject_privs():
-    """Make privs available as a dict in every Jinja template."""
-    raw = session.get('privs', {})
-    # convert lists back to sets for 'in' checks in templates
-    return {'privs': {k: set(v) for k, v in raw.items()}}
- 
- 
+
 # ─── AUTH HELPERS ────────────────────────────────────────────────
- 
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -124,38 +61,9 @@ def login_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated
- 
- 
-def require_priv(table, action):
-    """
-    DB-driven access control decorator.
-    Checks that the current user's PostgreSQL role has `action` (e.g. 'SELECT')
-    on `table` (e.g. 'employee') according to information_schema.role_table_grants.
-    This is the REAL authority — PostgreSQL GRANT/REVOKE takes effect immediately.
-    """
-    def decorator(f):
-        @wraps(f)
-        def decorated(*args, **kwargs):
-            if 'employee_id' not in session:
-                flash('Please log in first.', 'warning')
-                return redirect(url_for('login'))
-            privs = {k: set(v) for k, v in session.get('privs', {}).items()}
-            if action not in privs.get(table, set()):
-                flash(
-                    f'❌ Access denied. Your database role does not have '
-                    f'{action} privilege on "{table}". '
-                    f'A Manager can grant this in pgAdmin.',
-                    'danger'
-                )
-                return redirect(url_for('index'))
-            return f(*args, **kwargs)
-        return decorated
-    return decorator
- 
- 
-# Kept as backup — no longer used for page-level control
+
 def role_required(*roles):
-    """LEGACY — kept for reference. All access control now uses @require_priv."""
+    """Flask first-layer check (clean UI). DB is the real authority below."""
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
@@ -168,19 +76,16 @@ def role_required(*roles):
             return f(*args, **kwargs)
         return decorated
     return decorator
- 
- 
+
 def db_error_handler(f):
-    """Catches PostgreSQL InsufficientPrivilege — fires when GRANT is revoked mid-session."""
+    """Catches PostgreSQL InsufficientPrivilege — fires when GRANT is revoked."""
     @wraps(f)
     def decorated(*args, **kwargs):
         try:
             return f(*args, **kwargs)
         except psycopg2.errors.InsufficientPrivilege:
-            flash(
-                '❌ Database denied this action. Your PostgreSQL role lacks permission '
-                '(GRANT was revoked by a Manager).', 'danger'
-            )
+            flash('❌ Database denied this action. Your PostgreSQL role lacks permission '
+                  '(GRANT was revoked by a Manager).', 'danger')
             return redirect(url_for('index'))
         except psycopg2.OperationalError as e:
             flash(f'DB connection error: {e}', 'danger')
@@ -189,10 +94,9 @@ def db_error_handler(f):
             flash(f'Error: {e}', 'danger')
             return redirect(url_for('index'))
     return decorated
- 
- 
+
 # ─── LOGIN / LOGOUT ──────────────────────────────────────────────
- 
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if 'employee_id' in session:
@@ -212,22 +116,18 @@ def login():
             session['employee_id'] = emp['employee_id']
             session['emp_name']    = emp['emp_name']
             session['role']        = emp['role']
-            # Fetch and cache privileges immediately at login
-            session['privs'] = {k: list(v) for k, v in get_privileges().items()}
             flash(f'Welcome, {emp["emp_name"]}! ({emp["role"]})', 'success')
             return redirect(url_for('index'))
         else:
             flash('Invalid name or password.', 'danger')
     return render_template('login.html')
- 
- 
+
 @app.route('/logout')
 def logout():
     session.clear()
     flash('You have been logged out.', 'info')
     return redirect(url_for('login'))
- 
- 
+
 # ════════════════════════════════════════
 #  HOME
 # ════════════════════════════════════════
@@ -238,30 +138,29 @@ def index():
     conn = get_db()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     stats = {}
-    for key, sql, tbl in [
-        ('customers', "SELECT COUNT(*) AS c FROM customer",                 'customer'),
-        ('orders',    "SELECT COUNT(*) AS c FROM orders",                   'orders'),
-        ('menu',      "SELECT COUNT(*) AS c FROM menu_item WHERE is_available=TRUE", 'menu_item'),
-        ('employees', "SELECT COUNT(*) AS c FROM employee",                 'employee'),
-        ('unpaid',    "SELECT COUNT(*) AS c FROM bill WHERE payment_status='Unpaid'", 'bill'),
+    for key, sql in [
+        ('customers', "SELECT COUNT(*) AS c FROM customer"),
+        ('orders',    "SELECT COUNT(*) AS c FROM orders"),
+        ('menu',      "SELECT COUNT(*) AS c FROM menu_item WHERE is_available=TRUE"),
+        ('employees', "SELECT COUNT(*) AS c FROM employee"),
+        ('unpaid',    "SELECT COUNT(*) AS c FROM bill WHERE payment_status='Unpaid'"),
     ]:
         try:
             cur.execute(sql)
             stats[key] = cur.fetchone()['c']
-        except Exception:
+        except:
             conn.rollback()
             stats[key] = '—'
     cur.close(); conn.close()
     return render_template('index.html',
         customers=stats['customers'], orders=stats['orders'],
         menu=stats['menu'], employees=stats['employees'], unpaid=stats['unpaid'])
- 
- 
+
 # ════════════════════════════════════════
 #  CUSTOMERS
 # ════════════════════════════════════════
 @app.route('/customers')
-@require_priv('customer', 'SELECT')
+@role_required('Cashier', 'Manager')
 @db_error_handler
 def customers():
     conn = get_db()
@@ -270,10 +169,9 @@ def customers():
     rows = cur.fetchall()
     cur.close(); conn.close()
     return render_template('customers.html', customers=rows)
- 
- 
+
 @app.route('/customers/add', methods=['GET', 'POST'])
-@require_priv('customer', 'INSERT')
+@role_required('Manager')
 @db_error_handler
 def add_customer():
     if request.method == 'POST':
@@ -287,10 +185,9 @@ def add_customer():
         flash('Customer added!', 'success')
         return redirect(url_for('customers'))
     return render_template('customer_form.html', action='Add', customer=None)
- 
- 
+
 @app.route('/customers/edit/<string:contact>', methods=['GET', 'POST'])
-@require_priv('customer', 'UPDATE')
+@role_required('Manager')
 @db_error_handler
 def edit_customer(contact):
     conn = get_db()
@@ -307,10 +204,9 @@ def edit_customer(contact):
     customer = cur.fetchone()
     cur.close(); conn.close()
     return render_template('customer_form.html', action='Edit', customer=customer)
- 
- 
+
 @app.route('/customers/delete/<string:contact>')
-@require_priv('customer', 'DELETE')
+@role_required('Manager')
 @db_error_handler
 def delete_customer(contact):
     conn = get_db(); cur = conn.cursor()
@@ -318,13 +214,12 @@ def delete_customer(contact):
     conn.commit(); cur.close(); conn.close()
     flash('Customer deleted.', 'info')
     return redirect(url_for('customers'))
- 
- 
+
 # ════════════════════════════════════════
 #  MENU
 # ════════════════════════════════════════
 @app.route('/menu')
-@require_priv('menu_item', 'SELECT')
+@login_required
 @db_error_handler
 def menu():
     conn = get_db()
@@ -333,10 +228,9 @@ def menu():
     rows = cur.fetchall()
     cur.close(); conn.close()
     return render_template('menu.html', items=rows)
- 
- 
+
 @app.route('/menu/add', methods=['GET', 'POST'])
-@require_priv('menu_item', 'INSERT')
+@role_required('Manager')
 @db_error_handler
 def add_menu_item():
     if request.method == 'POST':
@@ -351,10 +245,9 @@ def add_menu_item():
         flash('Menu item added!', 'success')
         return redirect(url_for('menu'))
     return render_template('menu_form.html', action='Add', item=None)
- 
- 
+
 @app.route('/menu/edit/<int:iid>', methods=['GET', 'POST'])
-@require_priv('menu_item', 'UPDATE')
+@role_required('Manager')
 @db_error_handler
 def edit_menu_item(iid):
     conn = get_db()
@@ -373,10 +266,9 @@ def edit_menu_item(iid):
     item = cur.fetchone()
     cur.close(); conn.close()
     return render_template('menu_form.html', action='Edit', item=item)
- 
- 
+
 @app.route('/menu/delete/<int:iid>')
-@require_priv('menu_item', 'DELETE')
+@role_required('Manager')
 @db_error_handler
 def delete_menu_item(iid):
     conn = get_db(); cur = conn.cursor()
@@ -384,13 +276,12 @@ def delete_menu_item(iid):
     conn.commit(); cur.close(); conn.close()
     flash('Menu item deleted.', 'info')
     return redirect(url_for('menu'))
- 
- 
+
 # ════════════════════════════════════════
 #  ORDERS
 # ════════════════════════════════════════
 @app.route('/orders')
-@require_priv('orders', 'SELECT')
+@login_required
 @db_error_handler
 def orders():
     conn = get_db()
@@ -405,8 +296,7 @@ def orders():
     rows = cur.fetchall()
     cur.close(); conn.close()
     return render_template('orders.html', orders=rows)
- 
- 
+
 @app.route('/api/customer-by-mobile')
 @login_required
 @db_error_handler
@@ -424,10 +314,9 @@ def customer_by_mobile():
                         'name': row['name'], 'membership': row['membership'],
                         'loyalty_pts': row['loyalty_pts']})
     return jsonify({'found': False})
- 
- 
+
 @app.route('/orders/new', methods=['GET', 'POST'])
-@require_priv('orders', 'INSERT')
+@login_required
 @db_error_handler
 def new_order():
     conn = get_db()
@@ -438,7 +327,7 @@ def new_order():
         order_type = request.form['order_type']
         item_ids   = request.form.getlist('item_id[]')
         quantities = request.form.getlist('quantity[]')
- 
+
         cur.execute("SELECT contact FROM customer WHERE contact=%s", (contact,))
         existing = cur.fetchone()
         if existing:
@@ -448,7 +337,7 @@ def new_order():
                         (contact, new_name or 'Guest'))
             customer_contact = contact
             flash(f'New customer "{new_name or "Guest"}" registered!', 'info')
- 
+
         try:
             cur.execute("""
                 INSERT INTO orders (customer_contact, order_status, order_datetime, order_type)
@@ -459,7 +348,7 @@ def new_order():
             conn.rollback(); cur.close(); conn.close()
             flash(str(e).split('\n')[0], 'danger')
             return redirect(url_for('new_order'))
- 
+
         for iid, qty in zip(item_ids, quantities):
             if iid and qty:
                 cur.execute("INSERT INTO order_item (order_id, item_id, quantity) VALUES (%s,%s,%s)",
@@ -467,15 +356,14 @@ def new_order():
         conn.commit(); cur.close(); conn.close()
         flash(f'Order #{order_id} placed!', 'success')
         return redirect(url_for('orders'))
- 
+
     cur.execute("SELECT * FROM menu_item WHERE is_available=TRUE ORDER BY category, item_name")
     menu_items = cur.fetchall()
     cur.close(); conn.close()
     return render_template('order_form.html', menu_items=menu_items)
- 
- 
+
 @app.route('/orders/<int:oid>')
-@require_priv('orders', 'SELECT')
+@login_required
 @db_error_handler
 def view_order(oid):
     conn = get_db()
@@ -496,10 +384,9 @@ def view_order(oid):
     bill = cur.fetchone()
     cur.close(); conn.close()
     return render_template('order_detail.html', order=order, items=items, bill=bill)
- 
- 
+
 @app.route('/orders/status/<int:oid>', methods=['POST'])
-@require_priv('orders', 'UPDATE')
+@login_required
 @db_error_handler
 def update_order_status(oid):
     status = request.form['status']
@@ -508,13 +395,12 @@ def update_order_status(oid):
     conn.commit(); cur.close(); conn.close()
     flash('Order status updated!', 'success')
     return redirect(url_for('view_order', oid=oid))
- 
- 
+
 # ════════════════════════════════════════
 #  BILLS
 # ════════════════════════════════════════
 @app.route('/bills')
-@require_priv('bill', 'SELECT')
+@role_required('Cashier', 'Manager')
 @db_error_handler
 def bills():
     conn = get_db()
@@ -529,10 +415,9 @@ def bills():
     rows = cur.fetchall()
     cur.close(); conn.close()
     return render_template('bills.html', bills=rows)
- 
- 
+
 @app.route('/bills/generate/<int:oid>', methods=['GET', 'POST'])
-@require_priv('bill', 'INSERT')
+@role_required('Cashier', 'Manager')
 @db_error_handler
 def generate_bill(oid):
     conn = get_db()
@@ -543,13 +428,13 @@ def generate_bill(oid):
         WHERE oi.order_id=%s
     """, (oid,))
     total = cur.fetchone()['total'] or 0
- 
+
     if request.method == 'POST':
         payment_mode  = request.form['payment_mode']
         promo_code    = request.form.get('promo_code', '').strip()
         discount      = 0
         promo_applied = None
- 
+
         if promo_code:
             cur.execute("""
                 SELECT * FROM valid_promo_code
@@ -565,7 +450,7 @@ def generate_bill(oid):
                 cur.execute("DELETE FROM valid_promo_code WHERE code=%s", (promo_code,))
             else:
                 flash('Invalid or expired promo code.', 'warning')
- 
+
         final = max(total - discount, 0)
         cur.execute("""
             INSERT INTO bill (order_id, total_amount, discount_applied, final_amount,
@@ -577,7 +462,7 @@ def generate_bill(oid):
         conn.commit(); cur.close(); conn.close()
         flash(f'Bill #{bill_id} generated! Final: Rs. {final}', 'success')
         return redirect(url_for('view_bill', bid=bill_id))
- 
+
     cur.execute("""
         SELECT oi.quantity, m.item_name, m.price, (oi.quantity*m.price) AS subtotal
         FROM order_item oi JOIN menu_item m ON oi.item_id=m.item_id
@@ -588,10 +473,9 @@ def generate_bill(oid):
     promos = cur.fetchall()
     cur.close(); conn.close()
     return render_template('bill_form.html', oid=oid, total=total, items=items, promos=promos)
- 
- 
+
 @app.route('/bills/<int:bid>')
-@require_priv('bill', 'SELECT')
+@role_required('Cashier', 'Manager')
 @db_error_handler
 def view_bill(bid):
     conn = get_db()
@@ -612,10 +496,9 @@ def view_bill(bid):
     items = cur.fetchall()
     cur.close(); conn.close()
     return render_template('bill_detail.html', bill=bill, items=items)
- 
- 
+
 @app.route('/bills/pay/<int:bid>')
-@require_priv('bill', 'UPDATE')
+@role_required('Cashier', 'Manager')
 @db_error_handler
 def mark_paid(bid):
     conn = get_db(); cur = conn.cursor()
@@ -623,13 +506,12 @@ def mark_paid(bid):
     conn.commit(); cur.close(); conn.close()
     flash('Bill marked as paid!', 'success')
     return redirect(url_for('view_bill', bid=bid))
- 
- 
+
 # ════════════════════════════════════════
 #  PROMOS
 # ════════════════════════════════════════
 @app.route('/promos')
-@require_priv('valid_promo_code', 'SELECT')
+@role_required('Manager')
 @db_error_handler
 def promos():
     conn = get_db()
@@ -638,10 +520,9 @@ def promos():
     rows = cur.fetchall()
     cur.close(); conn.close()
     return render_template('promos.html', promos=rows)
- 
- 
+
 @app.route('/promos/add', methods=['GET', 'POST'])
-@require_priv('valid_promo_code', 'INSERT')
+@role_required('Manager')
 @db_error_handler
 def add_promo():
     if request.method == 'POST':
@@ -659,10 +540,9 @@ def add_promo():
         flash('Promo code added!', 'success')
         return redirect(url_for('promos'))
     return render_template('promo_form.html')
- 
- 
+
 @app.route('/promos/delete/<string:code>')
-@require_priv('valid_promo_code', 'DELETE')
+@role_required('Manager')
 @db_error_handler
 def delete_promo(code):
     conn = get_db(); cur = conn.cursor()
@@ -670,13 +550,12 @@ def delete_promo(code):
     conn.commit(); cur.close(); conn.close()
     flash('Promo code deleted.', 'info')
     return redirect(url_for('promos'))
- 
- 
+
 # ════════════════════════════════════════
 #  EMPLOYEES
 # ════════════════════════════════════════
 @app.route('/employees')
-@require_priv('employee', 'SELECT')
+@role_required('Manager')
 @db_error_handler
 def employees():
     conn = get_db()
@@ -685,10 +564,9 @@ def employees():
     rows = cur.fetchall()
     cur.close(); conn.close()
     return render_template('employees.html', employees=rows)
- 
- 
+
 @app.route('/employees/add', methods=['GET', 'POST'])
-@require_priv('employee', 'INSERT')
+@role_required('Manager')
 @db_error_handler
 def add_employee():
     if request.method == 'POST':
@@ -704,10 +582,9 @@ def add_employee():
         flash('Employee added!', 'success')
         return redirect(url_for('employees'))
     return render_template('employee_form.html', action='Add', employee=None)
- 
- 
+
 @app.route('/employees/edit/<int:eid>', methods=['GET', 'POST'])
-@require_priv('employee', 'UPDATE')
+@role_required('Manager')
 @db_error_handler
 def edit_employee(eid):
     conn = get_db()
@@ -731,10 +608,9 @@ def edit_employee(eid):
     employee = cur.fetchone()
     cur.close(); conn.close()
     return render_template('employee_form.html', action='Edit', employee=employee)
- 
- 
+
 @app.route('/employees/delete/<int:eid>')
-@require_priv('employee', 'DELETE')
+@role_required('Manager')
 @db_error_handler
 def delete_employee(eid):
     conn = get_db(); cur = conn.cursor()
@@ -742,13 +618,12 @@ def delete_employee(eid):
     conn.commit(); cur.close(); conn.close()
     flash('Employee deleted.', 'info')
     return redirect(url_for('employees'))
- 
- 
+
 # ════════════════════════════════════════
 #  AUDIT LOG
 # ════════════════════════════════════════
 @app.route('/audit')
-@require_priv('audit_log', 'SELECT')
+@role_required('Manager')
 @db_error_handler
 def audit():
     conn = get_db()
@@ -757,7 +632,6 @@ def audit():
     rows = cur.fetchall()
     cur.close(); conn.close()
     return render_template('audit.html', logs=rows)
- 
- 
+
 if __name__ == '__main__':
     app.run(debug=True)
