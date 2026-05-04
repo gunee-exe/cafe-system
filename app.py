@@ -2,24 +2,29 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from functools import wraps
 import psycopg2
 import psycopg2.extras
- 
+import os
+
 app = Flask(__name__)
 app.secret_key = 'cafe_secret_key_2024'
- 
+
 # ─── Master config (superuser — login check ONLY) ────────────────
 MASTER_CONFIG = {
-    'host':     'localhost',
-    'database': 'cafe_db',
-    'user':     'postgres',
-    'password': 'mianusman1',
-    'port':     '5432'
+    'host':     os.environ.get('PGHOST',     'localhost'),
+    'database': os.environ.get('PGDATABASE', 'cafe_db'),
+    'user':     os.environ.get('PGUSER',     'postgres'),
+    'password': os.environ.get('PGPASSWORD', 'mianusman1'),
+    'port':     os.environ.get('PGPORT',     '5432')
 }
- 
+
 # ─── Role → Real PostgreSQL login user ───────────────────────────
+_H = os.environ.get('PGHOST',     'localhost')
+_D = os.environ.get('PGDATABASE', 'cafe_db')
+_P = os.environ.get('PGPORT',     '5432')
+
 ROLE_DB_CONFIG = {
-    'Barista': {'host':'localhost','database':'cafe_db','user':'cafe_barista','password':'barista123','port':'5432'},
-    'Cashier': {'host':'localhost','database':'cafe_db','user':'cafe_cashier','password':'cashier123','port':'5432'},
-    'Manager': {'host':'localhost','database':'cafe_db','user':'cafe_manager','password':'manager123','port':'5432'},
+    'Barista': {'host':_H,'database':_D,'user':'cafe_barista','password':'barista123','port':_P},
+    'Cashier': {'host':_H,'database':_D,'user':'cafe_cashier','password':'cashier123','port':_P},
+    'Manager': {'host':_H,'database':_D,'user':'cafe_manager','password':'manager123','port':_P},
 }
  
 def get_master_db():
@@ -760,4 +765,5 @@ def audit():
  
  
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
