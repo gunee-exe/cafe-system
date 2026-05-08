@@ -10,10 +10,17 @@
     {% if customers %}
     <table>
       <thead>
-        <tr><th>#</th><th>Name</th><th>Contact</th><th>Membership</th><th>Loyalty Pts</th><th>Actions</th></tr>
+        <tr>
+          <th>#</th>
+          <th>Name</th>
+          <th>Contact</th>
+          <th>Membership</th>
+          <th>Loyalty Pts</th>
+          <th>Actions</th>
+        </tr>
       </thead>
       <tbody>
-      {% for c in customers %}
+        {% for c in customers %}
         <tr>
           <td>{{ c.customer_id }}</td>
           <td><strong>{{ c.name }}</strong></td>
@@ -26,15 +33,18 @@
           <td>{{ c.loyalty_pts }} pts</td>
           <td class="flex gap-2">
             <a href="/customers/edit/{{ c.customer_id }}" class="btn btn-sm btn-outline">Edit</a>
-            <a href="/customers/delete/{{ c.customer_id }}" class="btn btn-sm btn-danger"
-               onclick="return confirm('Delete this customer?')">Delete</a>
+            <a href="/customers/delete/{{ c.contact }}" class="btn btn-sm btn-danger"
+              onclick="return confirm('Delete this customer?')">Delete</a>
           </td>
         </tr>
-      {% endfor %}
+        {% endfor %}
       </tbody>
     </table>
     {% else %}
-    <div class="empty-state"><div class="icon">👤</div><p>No customers yet.</p></div>
+    <div class="empty-state">
+      <div class="icon">👤</div>
+      <p>No customers yet.</p>
+    </div>
     {% endif %}
   </div>
 </div>
